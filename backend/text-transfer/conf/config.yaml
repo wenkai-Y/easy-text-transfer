@@ -1,0 +1,16 @@
+server:
+  port: 8080
+  mode: debug
+
+auth:
+  # 示例口令明文: 123456
+  # 请替换成你自己的 SHA-256 值
+  password_hash: "8c5ef42b697275d8d6c61f6298645cb7ac12667eaae7c753d48e483856d00086"
+  cookie_name: "tt_access"
+  cookie_secret: "38df5ebf7e32b77526ed7fa5c2dff2e229f706e9f424127ed0e2c9a10b590fe5"
+  cookie_max_age: 86400
+
+room:
+  wait_timeout_seconds: 300
+  active_timeout_seconds: 600
+  message_max_length: 1000

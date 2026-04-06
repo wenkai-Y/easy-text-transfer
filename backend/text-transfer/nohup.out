@@ -1,0 +1,50 @@
+[GIN-debug] [WARNING] Creating an Engine instance with the Logger and Recovery middleware already attached.
+
+[GIN-debug] [WARNING] Running in "debug" mode. Switch to "release" mode in production.
+ - using env:	export GIN_MODE=release
+ - using code:	gin.SetMode(gin.ReleaseMode)
+
+[GIN-debug] GET    /ping                     --> main.main.func1 (3 handlers)
+[GIN-debug] POST   /api/access               --> text-transfer/internal/handler.(*AuthHandler).Access-fm (3 handlers)
+[GIN-debug] POST   /api/room/create          --> text-transfer/internal/handler.(*RoomHandler).CreateRoom-fm (4 handlers)
+[GIN-debug] POST   /api/room/join            --> text-transfer/internal/handler.(*RoomHandler).JoinRoom-fm (4 handlers)
+[GIN-debug] POST   /api/room/destroy         --> text-transfer/internal/handler.(*RoomHandler).DestroyRoom-fm (4 handlers)
+[GIN-debug] GET    /api/room/status          --> text-transfer/internal/handler.(*RoomHandler).RoomStatus-fm (4 handlers)
+[GIN-debug] GET    /ws                       --> text-transfer/internal/handler.(*WSHandler).ServeWS-fm (4 handlers)
+2026/04/06 19:05:04 server listening on :8080
+[GIN-debug] [WARNING] You trusted all proxies, this is NOT safe. We recommend you to set a value.
+Please check https://pkg.go.dev/github.com/gin-gonic/gin#readme-don-t-trust-all-proxies for details.
+[GIN-debug] Listening and serving HTTP on :8080
+[GIN] 2026/04/06 - 19:07:50 | 200 |     203.163µs | 124.127.220.215 | POST     "/api/access"
+[GIN] 2026/04/06 - 19:07:51 | 200 |     224.677µs | 124.127.220.215 | POST     "/api/room/create"
+[GIN] 2026/04/06 - 19:08:20 | 200 |      91.039µs |  159.226.94.105 | POST     "/api/access"
+[GIN] 2026/04/06 - 19:08:34 | 200 |     118.748µs |  159.226.94.105 | POST     "/api/room/join"
+2026/04/06 19:08:54 ws read error: read tcp 172.17.0.1:8080->172.24.0.2:53332: use of closed network connection
+[GIN] 2026/04/06 - 19:08:54 | 200 |          1m2s | 124.127.220.215 | GET      "/ws?room_id=2955&role=creator"
+2026/04/06 19:08:54 ws read error: read tcp 172.17.0.1:8080->172.24.0.2:53348: use of closed network connection
+[GIN] 2026/04/06 - 19:08:54 | 200 | 19.794636743s |  159.226.94.105 | GET      "/ws?room_id=2955&role=joiner"
+[GIN] 2026/04/06 - 19:08:54 | 200 |     250.998µs |  159.226.94.105 | POST     "/api/room/destroy"
+[GIN] 2026/04/06 - 19:28:23 | 404 |         691ns |    101.47.8.187 | GET      "/ws/vendor/phpunit/phpunit/src/Util/PHP/eval-stdin.php"
+[GIN] 2026/04/06 - 19:28:25 | 404 |         893ns |    101.47.8.187 | GET      "/ws/ec/vendor/phpunit/phpunit/src/Util/PHP/eval-stdin.php"
+[GIN] 2026/04/06 - 19:28:32 | 404 |         444ns |    101.47.8.187 | GET      "/api/vendor/phpunit/phpunit/src/Util/PHP/eval-stdin.php"
+[GIN] 2026/04/06 - 19:51:29 | 200 |       58.63µs | 124.127.220.215 | POST     "/api/access"
+[GIN] 2026/04/06 - 20:29:36 | 401 |      56.904µs |  159.226.94.105 | POST     "/api/access"
+[GIN] 2026/04/06 - 20:29:39 | 200 |      71.188µs |  159.226.94.105 | POST     "/api/access"
+[GIN] 2026/04/06 - 20:29:45 | 200 |       74.57µs |  159.226.94.105 | POST     "/api/room/create"
+[GIN] 2026/04/06 - 20:30:12 | 200 |      71.866µs | 124.127.220.215 | POST     "/api/access"
+[GIN] 2026/04/06 - 20:30:20 | 200 |     134.762µs | 124.127.220.215 | POST     "/api/room/join"
+2026/04/06 20:30:34 ws read error: read tcp 172.17.0.1:8080->172.24.0.2:53908: use of closed network connection
+[GIN] 2026/04/06 - 20:30:34 | 200 | 48.421953937s |  159.226.94.105 | GET      "/ws?room_id=1362&role=creator"
+2026/04/06 20:30:34 ws read error: read tcp 172.17.0.1:8080->172.24.0.2:53918: use of closed network connection
+[GIN] 2026/04/06 - 20:30:34 | 200 |  13.96391801s | 124.127.220.215 | GET      "/ws?room_id=1362&role=joiner"
+[GIN] 2026/04/06 - 20:30:34 | 200 |     204.626µs | 124.127.220.215 | POST     "/api/room/destroy"
+[GIN] 2026/04/06 - 20:41:39 | 200 |      81.824µs | 124.127.220.215 | POST     "/api/access"
+[GIN] 2026/04/06 - 20:41:43 | 200 |      57.219µs | 124.127.220.215 | POST     "/api/room/create"
+[GIN] 2026/04/06 - 20:41:51 | 200 |      61.679µs | 124.127.220.215 | POST     "/api/access"
+[GIN] 2026/04/06 - 20:41:54 | 200 |     126.564µs | 124.127.220.215 | POST     "/api/room/join"
+2026/04/06 20:42:08 ws read error: websocket: close 1001 (going away): WebSocket is closed due to suspension.
+[GIN] 2026/04/06 - 20:42:08 | 200 | 13.620136159s | 124.127.220.215 | GET      "/ws?room_id=7533&role=joiner"
+2026/04/06 20:42:25 ws read error: read tcp 172.17.0.1:8080->172.24.0.2:54000: use of closed network connection
+[GIN] 2026/04/06 - 20:42:25 | 200 | 41.539968162s | 124.127.220.215 | GET      "/ws?room_id=7533&role=creator"
+[GIN] 2026/04/06 - 20:42:25 | 200 |     168.832µs | 124.127.220.215 | POST     "/api/room/destroy"
+[GIN] 2026/04/06 - 20:42:34 | 200 |      62.773µs | 124.127.220.215 | POST     "/api/access"

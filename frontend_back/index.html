@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>文字互传</title>
+  <link rel="stylesheet" href="./style.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <div class="app-card">
+      <header class="app-header">
+        <div>
+          <h1>文字互传</h1>
+          <p class="sub">极简双端文字互传</p>
+        </div>
+      </header>
+
+      <section id="access-section" class="access-section">
+        <div class="inline-form">
+          <input
+            id="password-input"
+            type="password"
+            inputmode="numeric"
+            pattern="[0-9]*"
+            maxlength="20"
+            placeholder="请输入数字口令"
+          />
+          <button id="access-btn">进入</button>
+        </div>
+        <p id="access-msg" class="msg"></p>
+      </section>
+
+      <section id="main-section" class="main-section hidden">
+        <div class="top-bar">
+          <div class="info-chip">
+            <span class="chip-label">房间</span>
+            <span id="room-id" class="chip-value">未加入</span>
+          </div>
+
+          <div class="info-chip">
+            <span class="chip-label">状态</span>
+            <span id="room-status" class="chip-value">未连接</span>
+          </div>
+
+          <div class="info-chip">
+            <span class="chip-label">倒计时</span>
+            <span id="countdown" class="chip-value timer">--:--</span>
+          </div>
+        </div>
+
+        <div class="control-bar">
+          <button id="create-room-btn">创建房间</button>
+
+          <div class="join-group">
+            <input id="join-room-input" maxlength="4" placeholder="输入4位房间号" />
+            <button id="join-room-btn">加入房间</button>
+          </div>
+
+          <button id="destroy-room-btn" class="danger">销毁房间</button>
+        </div>
+
+        <p id="system-msg" class="msg"></p>
+
+        <div class="chat-panel">
+          <div id="chat-list" class="chat-list"></div>
+
+          <div class="composer">
+            <textarea id="chat-input" rows="2" placeholder="输入要发送的文字，按 Enter 发送，Shift+Enter 换行"></textarea>
+            <button id="send-btn">发送</button>
+          </div>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <script src="./app.js"></script>
+</body>
+</html>

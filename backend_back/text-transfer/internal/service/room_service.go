@@ -1,0 +1,311 @@
+package service
+
+import (
+	"errors"
+	"fmt"
+	"sync"
+	"time"
+
+	"text-transfer/internal/config"
+	"text-transfer/internal/model"
+	"text-transfer/internal/utils"
+
+	"github.com/gorilla/websocket"
+)
+
+type RoomService struct {
+	cfg   *config.Config
+	rooms map[string]*model.Room
+	mu    sync.RWMutex
+}
+
+func NewRoomService(cfg *config.Config) *RoomService {
+	return &RoomService{
+		cfg:   cfg,
+		rooms: make(map[string]*model.Room),
+	}
+}
+
+func (s *RoomService) CreateRoom() (*model.Room, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	var roomID string
+	var err error
+
+	for i := 0; i < 20; i++ {
+		roomID, err = utils.Random4DigitString()
+		if err != nil {
+			return nil, err
+		}
+		if _, exists := s.rooms[roomID]; !exists {
+			break
+		}
+	}
+	if _, exists := s.rooms[roomID]; exists {
+		return nil, errors.New("failed to generate unique room id")
+	}
+
+	now := time.Now()
+	room := &model.Room{
+		ID:        roomID,
+		Status:    model.RoomStatusWaiting,
+		Creator:   &model.Peer{Role: model.RoleCreator, Online: false},
+		Joiner:    nil,
+		CreatedAt: now,
+		ExpiresAt: now.Add(time.Duration(s.cfg.Room.WaitTimeoutSeconds) * time.Second),
+	}
+
+	room.WaitTimer = time.AfterFunc(
+		time.Duration(s.cfg.Room.WaitTimeoutSeconds)*time.Second,
+		func() {
+			s.DestroyRoom(roomID, "waiting timeout")
+		},
+	)
+
+	s.rooms[roomID] = room
+	return room, nil
+}
+
+func (s *RoomService) JoinRoom(roomID string) (*model.Room, error) {
+	s.mu.RLock()
+	room, ok := s.rooms[roomID]
+	s.mu.RUnlock()
+	if !ok {
+		return nil, errors.New("room not found")
+	}
+
+	room.Mu.Lock()
+	defer room.Mu.Unlock()
+
+	if room.Status == model.RoomStatusDestroyed {
+		return nil, errors.New("room destroyed")
+	}
+	if room.Status == model.RoomStatusActive {
+		return nil, errors.New("room is full")
+	}
+
+	if room.Joiner == nil {
+		room.Joiner = &model.Peer{Role: model.RoleJoiner, Online: false}
+	}
+
+	now := time.Now()
+	room.Status = model.RoomStatusActive
+	room.ActivatedAt = &now
+	room.ExpiresAt = now.Add(time.Duration(s.cfg.Room.ActiveTimeoutSeconds) * time.Second)
+
+	if room.WaitTimer != nil {
+		room.WaitTimer.Stop()
+	}
+
+	room.ActiveTimer = time.AfterFunc(
+		time.Duration(s.cfg.Room.ActiveTimeoutSeconds)*time.Second,
+		func() {
+			s.DestroyRoom(roomID, "active timeout")
+		},
+	)
+
+	payload := map[string]any{
+		"type":       "system",
+		"event":      "room_activated",
+		"message":    "房间已配对成功",
+		"room_id":    room.ID,
+		"expires_at": room.ExpiresAt.Unix(),
+	}
+
+	if room.Creator != nil && room.Creator.Conn != nil && room.Creator.Online {
+		_ = room.Creator.Conn.WriteJSON(payload)
+	}
+	if room.Joiner != nil && room.Joiner.Conn != nil && room.Joiner.Online {
+		_ = room.Joiner.Conn.WriteJSON(payload)
+	}
+
+	return room, nil
+}
+
+func (s *RoomService) GetRoom(roomID string) (*model.Room, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	room, ok := s.rooms[roomID]
+	return room, ok
+}
+
+func (s *RoomService) DestroyRoom(roomID string, reason string) {
+	s.mu.Lock()
+	room, ok := s.rooms[roomID]
+	if !ok {
+		s.mu.Unlock()
+		return
+	}
+	delete(s.rooms, roomID)
+	s.mu.Unlock()
+
+	room.Mu.Lock()
+	defer room.Mu.Unlock()
+
+	if room.Status == model.RoomStatusDestroyed {
+		return
+	}
+
+	room.Status = model.RoomStatusDestroyed
+	room.DestroyReason = reason
+
+	if room.WaitTimer != nil {
+		room.WaitTimer.Stop()
+	}
+	if room.ActiveTimer != nil {
+		room.ActiveTimer.Stop()
+	}
+
+	s.notifySystem(room.Creator, "room_destroyed", fmt.Sprintf("房间已销毁: %s", reason))
+	s.notifySystem(room.Joiner, "room_destroyed", fmt.Sprintf("房间已销毁: %s", reason))
+
+	s.closeConn(room.Creator)
+	s.closeConn(room.Joiner)
+}
+
+func (s *RoomService) BindConn(roomID, role string, conn *websocket.Conn) error {
+	room, ok := s.GetRoom(roomID)
+	if !ok {
+		return errors.New("room not found")
+	}
+
+	room.Mu.Lock()
+	defer room.Mu.Unlock()
+
+	if room.Status == model.RoomStatusDestroyed {
+		return errors.New("room destroyed")
+	}
+
+	switch role {
+	case model.RoleCreator:
+		if room.Creator == nil {
+			return errors.New("creator slot missing")
+		}
+		room.Creator.Conn = conn
+		room.Creator.Online = true
+	case model.RoleJoiner:
+		if room.Joiner == nil {
+			return errors.New("joiner slot missing")
+		}
+		room.Joiner.Conn = conn
+		room.Joiner.Online = true
+	default:
+		return errors.New("invalid role")
+	}
+
+	s.notifyPeerStatus(room, role, true)
+	return nil
+}
+
+func (s *RoomService) UnbindConn(roomID, role string, conn *websocket.Conn) {
+	room, ok := s.GetRoom(roomID)
+	if !ok {
+		return
+	}
+
+	room.Mu.Lock()
+	defer room.Mu.Unlock()
+
+	switch role {
+	case model.RoleCreator:
+		if room.Creator != nil && room.Creator.Conn == conn {
+			room.Creator.Conn = nil
+			room.Creator.Online = false
+		}
+	case model.RoleJoiner:
+		if room.Joiner != nil && room.Joiner.Conn == conn {
+			room.Joiner.Conn = nil
+			room.Joiner.Online = false
+		}
+	}
+
+	s.notifyPeerStatus(room, role, false)
+}
+
+func (s *RoomService) SendChat(roomID, fromRole, content string) error {
+	room, ok := s.GetRoom(roomID)
+	if !ok {
+		return errors.New("room not found")
+	}
+
+	room.Mu.RLock()
+	defer room.Mu.RUnlock()
+
+	if room.Status != model.RoomStatusActive {
+		return errors.New("room is not active")
+	}
+
+	if len(content) == 0 {
+		return errors.New("empty content")
+	}
+	if len([]rune(content)) > s.cfg.Room.MessageMaxLength {
+		return errors.New("message too long")
+	}
+
+	msg := map[string]any{
+		"type":    "chat",
+		"from":    fromRole,
+		"content": content,
+		"time":    time.Now().Unix(),
+	}
+
+	var target *model.Peer
+	if fromRole == model.RoleCreator {
+		target = room.Joiner
+	} else {
+		target = room.Creator
+	}
+
+	if target == nil || target.Conn == nil || !target.Online {
+		return errors.New("peer is offline")
+	}
+
+	return target.Conn.WriteJSON(msg)
+}
+
+func (s *RoomService) notifyPeerStatus(room *model.Room, changedRole string, online bool) {
+	event := "peer_offline"
+	message := "对方已离线，可等待其重连"
+	if online {
+		event = "peer_online"
+		message = "对方已上线"
+	}
+
+	payload := map[string]any{
+		"type":    "system",
+		"event":   event,
+		"role":    changedRole,
+		"message": message,
+	}
+
+	if changedRole == model.RoleCreator {
+		if room.Joiner != nil && room.Joiner.Conn != nil {
+			_ = room.Joiner.Conn.WriteJSON(payload)
+		}
+	} else {
+		if room.Creator != nil && room.Creator.Conn != nil {
+			_ = room.Creator.Conn.WriteJSON(payload)
+		}
+	}
+}
+
+func (s *RoomService) notifySystem(peer *model.Peer, event, message string) {
+	if peer == nil || peer.Conn == nil || !peer.Online {
+		return
+	}
+	_ = peer.Conn.WriteJSON(map[string]any{
+		"type":    "system",
+		"event":   event,
+		"message": message,
+	})
+}
+
+func (s *RoomService) closeConn(peer *model.Peer) {
+	if peer == nil || peer.Conn == nil {
+		return
+	}
+	_ = peer.Conn.Close()
+	peer.Conn = nil
+	peer.Online = false
+}
