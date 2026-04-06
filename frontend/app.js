@@ -411,7 +411,11 @@ function connectWS() {
             setDisplayStatus("等待对方加入");
             setPeerOnline(false);
           } else if (data.status === "active") {
-            setDisplayStatus("已配对，等待对方上线");
+            if (state.peerOnline) {
+              setDisplayStatus("对方在线");
+            } else {
+              setDisplayStatus("已配对，等待对方上线");
+            }
           }
           appendMessage("system", `连接成功，房间 ${data.room_id}`);
           break;
