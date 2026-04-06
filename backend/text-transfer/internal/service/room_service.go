@@ -19,6 +19,13 @@ type RoomService struct {
 	mu    sync.RWMutex
 }
 
+type JoinableRoom struct {
+	ID               string
+	Status           string
+	ExpiresAt        time.Time
+	RemainingSeconds int64
+}
+
 func NewRoomService(cfg *config.Config) *RoomService {
 	return &RoomService{
 		cfg:   cfg,
@@ -128,6 +135,33 @@ func (s *RoomService) GetRoom(roomID string) (*model.Room, bool) {
 	defer s.mu.RUnlock()
 	room, ok := s.rooms[roomID]
 	return room, ok
+}
+
+func (s *RoomService) ListJoinableRooms() []JoinableRoom {
+	now := time.Now()
+
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	result := make([]JoinableRoom, 0, len(s.rooms))
+	for _, room := range s.rooms {
+		room.Mu.RLock()
+		if room.Status == model.RoomStatusWaiting {
+			remaining := int64(room.ExpiresAt.Sub(now).Seconds())
+			if remaining < 0 {
+				remaining = 0
+			}
+			result = append(result, JoinableRoom{
+				ID:               room.ID,
+				Status:           room.Status,
+				ExpiresAt:        room.ExpiresAt,
+				RemainingSeconds: remaining,
+			})
+		}
+		room.Mu.RUnlock()
+	}
+
+	return result
 }
 
 func (s *RoomService) DestroyRoom(roomID string, reason string) {
@@ -329,4 +363,3 @@ func (s *RoomService) closeConn(peer *model.Peer) {
 	peer.Conn = nil
 	peer.Online = false
 }
-
