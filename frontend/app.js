@@ -191,11 +191,9 @@ function renderViewerByIndex(index) {
     viewerImage.classList.remove("hidden");
   } else if (current.mediaKind === "video") {
     viewerVideo.src = current.dataURL;
+    viewerVideo.preload = "metadata";
     viewerVideo.classList.remove("hidden");
-    setTimeout(() => {
-      viewerVideo.currentTime = 0;
-      viewerVideo.play().catch(() => {});
-    }, 0);
+    viewerVideo.load();
   }
 
   const hasPrev = index > 0;
@@ -272,6 +270,9 @@ function appendMediaMessage(type, media, from = "") {
     video.playsInline = true;
     video.muted = true;
     video.addEventListener("loadeddata", scrollChatToBottom);
+    video.addEventListener("error", () => {
+      setSystemMessage("该视频编码在当前设备可能不受支持，可尝试在发送端转为 H.264 后重发");
+    });
     coverWrap.addEventListener("click", () => openMediaViewerById(mediaId));
 
     const playBadge = document.createElement("div");
@@ -296,51 +297,6 @@ function appendMediaMessage(type, media, from = "") {
   item.appendChild(bubble);
   chatList.appendChild(item);
   scrollChatToBottom();
-}
-
-function appendMediaMessage(type, media, from = "") {
-  const item = document.createElement("div");
-  item.className = `chat-item ${type}`;
-
-  const meta = document.createElement("div");
-  meta.className = "meta";
-
-  const now = new Date();
-  const timeStr = `${pad2(now.getHours())}:${pad2(now.getMinutes())}:${pad2(now.getSeconds())}`;
-  meta.textContent = from ? `${from} · ${timeStr}` : timeStr;
-
-  const bubble = document.createElement("div");
-  bubble.className = "bubble";
-
-  if (media.media_kind === "image") {
-    const img = document.createElement("img");
-    img.src = media.data_url;
-    img.alt = media.file_name || "image";
-    img.className = "bubble-media";
-    img.loading = "lazy";
-    bubble.appendChild(img);
-  } else if (media.media_kind === "video") {
-    const video = document.createElement("video");
-    video.src = media.data_url;
-    video.controls = true;
-    video.preload = "metadata";
-    video.className = "bubble-media";
-    bubble.appendChild(video);
-  } else {
-    bubble.textContent = "收到不支持的媒体类型";
-  }
-
-  if (media.file_name) {
-    const fileNameEl = document.createElement("div");
-    fileNameEl.className = "bubble-file-name";
-    fileNameEl.textContent = media.file_name;
-    bubble.appendChild(fileNameEl);
-  }
-
-  item.appendChild(meta);
-  item.appendChild(bubble);
-  chatList.appendChild(item);
-  chatList.scrollTop = chatList.scrollHeight;
 }
 
 async function request(url, options = {}) {
@@ -881,6 +837,10 @@ qrModal.addEventListener("click", (e) => {
   if (e.target.classList.contains("modal-mask")) {
     closeQrModal();
   }
+});
+
+viewerVideo.addEventListener("error", () => {
+  setSystemMessage("该视频在当前设备无法解码，建议发送端转换为 H.264 编码（MP4）后重试");
 });
 
 closeMediaViewerBtn.addEventListener("click", closeMediaViewer);

@@ -76,60 +76,71 @@ func (s *RoomService) CreateRoom() (*model.Room, error) {
 	return room, nil
 }
 
-func (s *RoomService) JoinRoom(roomID string) (*model.Room, error) {
+func (s *RoomService) JoinRoom(roomID string) (*model.Room, string, error) {
 	s.mu.RLock()
 	room, ok := s.rooms[roomID]
 	s.mu.RUnlock()
 	if !ok {
-		return nil, errors.New("room not found")
+		return nil, "", errors.New("room not found")
 	}
 
 	room.Mu.Lock()
 	defer room.Mu.Unlock()
 
 	if room.Status == model.RoomStatusDestroyed {
-		return nil, errors.New("room destroyed")
-	}
-	if room.Status == model.RoomStatusActive {
-		return nil, errors.New("room is full")
+		return nil, "", errors.New("room destroyed")
 	}
 
-	if room.Joiner == nil {
+	assignedRole := ""
+	if room.Creator == nil || (!room.Creator.Online && room.Creator.Conn == nil) {
+		room.Creator = &model.Peer{Role: model.RoleCreator, Online: false}
+		assignedRole = model.RoleCreator
+	} else if room.Joiner == nil || (!room.Joiner.Online && room.Joiner.Conn == nil) {
 		room.Joiner = &model.Peer{Role: model.RoleJoiner, Online: false}
+		assignedRole = model.RoleJoiner
+	} else {
+		return nil, "", errors.New("room is full")
 	}
 
-	now := time.Now()
-	room.Status = model.RoomStatusActive
-	room.ActivatedAt = &now
-	room.ExpiresAt = now.Add(time.Duration(s.cfg.Room.ActiveTimeoutSeconds) * time.Second)
+	wasActive := room.Status == model.RoomStatusActive
+	if room.Creator != nil && room.Joiner != nil {
+		now := time.Now()
+		room.Status = model.RoomStatusActive
+		if !wasActive {
+			room.ActivatedAt = &now
+			room.ExpiresAt = now.Add(time.Duration(s.cfg.Room.ActiveTimeoutSeconds) * time.Second)
 
-	if room.WaitTimer != nil {
-		room.WaitTimer.Stop()
+			if room.WaitTimer != nil {
+				room.WaitTimer.Stop()
+			}
+
+			room.ActiveTimer = time.AfterFunc(
+				time.Duration(s.cfg.Room.ActiveTimeoutSeconds)*time.Second,
+				func() {
+					s.DestroyRoom(roomID, "active timeout")
+				},
+			)
+
+			payload := map[string]any{
+				"type":       "system",
+				"event":      "room_activated",
+				"message":    "房间已配对成功",
+				"room_id":    room.ID,
+				"expires_at": room.ExpiresAt.Unix(),
+			}
+
+			if room.Creator != nil && room.Creator.Conn != nil && room.Creator.Online {
+				_ = room.Creator.Conn.WriteJSON(payload)
+			}
+			if room.Joiner != nil && room.Joiner.Conn != nil && room.Joiner.Online {
+				_ = room.Joiner.Conn.WriteJSON(payload)
+			}
+		}
+	} else {
+		room.Status = model.RoomStatusWaiting
 	}
 
-	room.ActiveTimer = time.AfterFunc(
-		time.Duration(s.cfg.Room.ActiveTimeoutSeconds)*time.Second,
-		func() {
-			s.DestroyRoom(roomID, "active timeout")
-		},
-	)
-
-	payload := map[string]any{
-		"type":       "system",
-		"event":      "room_activated",
-		"message":    "房间已配对成功",
-		"room_id":    room.ID,
-		"expires_at": room.ExpiresAt.Unix(),
-	}
-
-	if room.Creator != nil && room.Creator.Conn != nil && room.Creator.Online {
-		_ = room.Creator.Conn.WriteJSON(payload)
-	}
-	if room.Joiner != nil && room.Joiner.Conn != nil && room.Joiner.Online {
-		_ = room.Joiner.Conn.WriteJSON(payload)
-	}
-
-	return room, nil
+	return room, assignedRole, nil
 }
 
 func (s *RoomService) GetRoom(roomID string) (*model.Room, bool) {
@@ -148,7 +159,12 @@ func (s *RoomService) ListJoinableRooms() []JoinableRoom {
 	result := make([]JoinableRoom, 0, len(s.rooms))
 	for _, room := range s.rooms {
 		room.Mu.RLock()
-		if room.Status == model.RoomStatusWaiting {
+		isWaiting := room.Status == model.RoomStatusWaiting
+		hasVacancy := room.Status == model.RoomStatusActive &&
+			((room.Creator == nil || (!room.Creator.Online && room.Creator.Conn == nil)) ||
+				(room.Joiner == nil || (!room.Joiner.Online && room.Joiner.Conn == nil)))
+
+		if isWaiting || hasVacancy {
 			remaining := int64(room.ExpiresAt.Sub(now).Seconds())
 			if remaining < 0 {
 				remaining = 0
