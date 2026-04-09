@@ -1,8 +1,10 @@
 package service
 
 import (
+	"encoding/base64"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -278,18 +280,6 @@ func (s *RoomService) UnbindConn(roomID, role string, conn *websocket.Conn) {
 }
 
 func (s *RoomService) SendChat(roomID, fromRole, content string) error {
-	room, ok := s.GetRoom(roomID)
-	if !ok {
-		return errors.New("room not found")
-	}
-
-	room.Mu.RLock()
-	defer room.Mu.RUnlock()
-
-	if room.Status != model.RoomStatusActive {
-		return errors.New("room is not active")
-	}
-
 	if len(content) == 0 {
 		return errors.New("empty content")
 	}
@@ -304,6 +294,66 @@ func (s *RoomService) SendChat(roomID, fromRole, content string) error {
 		"time":    time.Now().Unix(),
 	}
 
+	return s.sendToPeer(roomID, fromRole, msg)
+}
+
+func (s *RoomService) SendMedia(roomID, fromRole, mediaKind, fileName, mimeType string, sizeBytes int64, dataURL string) error {
+	if mediaKind != "image" && mediaKind != "video" {
+		return errors.New("unsupported media kind")
+	}
+
+	if sizeBytes <= 0 {
+		return errors.New("invalid media size")
+	}
+
+	maxBytes := int64(s.cfg.Room.MediaMaxBytes)
+	if sizeBytes > maxBytes {
+		return fmt.Errorf("media too large (max %d bytes)", s.cfg.Room.MediaMaxBytes)
+	}
+
+	mimePrefix := mediaKind + "/"
+	if !strings.HasPrefix(mimeType, mimePrefix) {
+		return errors.New("invalid mime type")
+	}
+
+	prefix := fmt.Sprintf("data:%s;base64,", mimeType)
+	if !strings.HasPrefix(dataURL, prefix) {
+		return errors.New("invalid data url")
+	}
+
+	encoded := strings.TrimPrefix(dataURL, prefix)
+	decodedLen := int64(base64.StdEncoding.DecodedLen(len(encoded)))
+	if decodedLen > maxBytes {
+		return fmt.Errorf("media too large (max %d bytes)", s.cfg.Room.MediaMaxBytes)
+	}
+
+	msg := map[string]any{
+		"type":       "media",
+		"from":       fromRole,
+		"media_kind": mediaKind,
+		"file_name":  fileName,
+		"mime_type":  mimeType,
+		"size_bytes": sizeBytes,
+		"data_url":   dataURL,
+		"time":       time.Now().Unix(),
+	}
+
+	return s.sendToPeer(roomID, fromRole, msg)
+}
+
+func (s *RoomService) sendToPeer(roomID, fromRole string, payload map[string]any) error {
+	room, ok := s.GetRoom(roomID)
+	if !ok {
+		return errors.New("room not found")
+	}
+
+	room.Mu.RLock()
+	defer room.Mu.RUnlock()
+
+	if room.Status != model.RoomStatusActive {
+		return errors.New("room is not active")
+	}
+
 	var target *model.Peer
 	if fromRole == model.RoleCreator {
 		target = room.Joiner
@@ -315,7 +365,7 @@ func (s *RoomService) SendChat(roomID, fromRole, content string) error {
 		return errors.New("peer is offline")
 	}
 
-	return target.Conn.WriteJSON(msg)
+	return target.Conn.WriteJSON(payload)
 }
 
 func (s *RoomService) notifyPeerStatus(room *model.Room, changedRole string, online bool) {
