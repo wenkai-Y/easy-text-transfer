@@ -54,7 +54,7 @@ func (h *RoomHandler) JoinRoom(c *gin.Context) {
 		return
 	}
 
-	room, err := h.roomService.JoinRoom(req.RoomID)
+	room, role, err := h.roomService.JoinRoom(req.RoomID)
 	if err != nil {
 		utils.Fail(c, http.StatusBadRequest, err.Error())
 		return
@@ -62,7 +62,7 @@ func (h *RoomHandler) JoinRoom(c *gin.Context) {
 
 	utils.OK(c, gin.H{
 		"room_id":    room.ID,
-		"role":       model.RoleJoiner,
+		"role":       role,
 		"status":     room.Status,
 		"expires_at": room.ExpiresAt.Unix(),
 	})
