@@ -30,8 +30,13 @@ func NewWSHandler(roomService *service.RoomService) *WSHandler {
 }
 
 type WSMessage struct {
-	Type    string `json:"type"`
-	Content string `json:"content"`
+	Type      string `json:"type"`
+	Content   string `json:"content"`
+	MediaKind string `json:"media_kind"`
+	FileName  string `json:"file_name"`
+	MimeType  string `json:"mime_type"`
+	SizeBytes int64  `json:"size_bytes"`
+	DataURL   string `json:"data_url"`
 }
 
 func (h *WSHandler) ServeWS(c *gin.Context) {
@@ -94,6 +99,14 @@ func (h *WSHandler) ServeWS(c *gin.Context) {
 			_ = conn.WriteJSON(gin.H{"type": "pong"})
 		case "chat":
 			if err := h.roomService.SendChat(roomID, role, msg.Content); err != nil {
+				_ = conn.WriteJSON(gin.H{
+					"type":    "system",
+					"event":   "send_failed",
+					"message": err.Error(),
+				})
+			}
+		case "media":
+			if err := h.roomService.SendMedia(roomID, role, msg.MediaKind, msg.FileName, msg.MimeType, msg.SizeBytes, msg.DataURL); err != nil {
 				_ = conn.WriteJSON(gin.H{
 					"type":    "system",
 					"event":   "send_failed",

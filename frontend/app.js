@@ -3,6 +3,7 @@ let ws = null;
 let reconnectTimer = null;
 let countdownTimer = null;
 let roomListTimer = null;
+const MEDIA_MAX_BYTES = 8 * 1024 * 1024;
 
 const state = {
   roomId: localStorage.getItem("tt_room_id") || "",
@@ -34,6 +35,8 @@ const destroyRoomBtn = document.getElementById("destroy-room-btn");
 const chatList = document.getElementById("chat-list");
 const chatInput = document.getElementById("chat-input");
 const sendBtn = document.getElementById("send-btn");
+const sendMediaBtn = document.getElementById("send-media-btn");
+const mediaInput = document.getElementById("media-input");
 
 const qrModal = document.getElementById("qr-modal");
 const closeQrBtn = document.getElementById("close-qr-btn");
@@ -53,6 +56,7 @@ function setDisplayStatus(status) {
 function setPeerOnline(online) {
   state.peerOnline = !!online;
   sendBtn.disabled = !state.peerOnline;
+  sendMediaBtn.disabled = !state.peerOnline;
 }
 
 function pad2(n) {
@@ -127,6 +131,51 @@ function appendMessage(type, text, from = "") {
   const bubble = document.createElement("div");
   bubble.className = "bubble";
   bubble.textContent = text;
+
+  item.appendChild(meta);
+  item.appendChild(bubble);
+  chatList.appendChild(item);
+  chatList.scrollTop = chatList.scrollHeight;
+}
+
+function appendMediaMessage(type, media, from = "") {
+  const item = document.createElement("div");
+  item.className = `chat-item ${type}`;
+
+  const meta = document.createElement("div");
+  meta.className = "meta";
+
+  const now = new Date();
+  const timeStr = `${pad2(now.getHours())}:${pad2(now.getMinutes())}:${pad2(now.getSeconds())}`;
+  meta.textContent = from ? `${from} · ${timeStr}` : timeStr;
+
+  const bubble = document.createElement("div");
+  bubble.className = "bubble";
+
+  if (media.media_kind === "image") {
+    const img = document.createElement("img");
+    img.src = media.data_url;
+    img.alt = media.file_name || "image";
+    img.className = "bubble-media";
+    img.loading = "lazy";
+    bubble.appendChild(img);
+  } else if (media.media_kind === "video") {
+    const video = document.createElement("video");
+    video.src = media.data_url;
+    video.controls = true;
+    video.preload = "metadata";
+    video.className = "bubble-media";
+    bubble.appendChild(video);
+  } else {
+    bubble.textContent = "收到不支持的媒体类型";
+  }
+
+  if (media.file_name) {
+    const fileNameEl = document.createElement("div");
+    fileNameEl.className = "bubble-file-name";
+    fileNameEl.textContent = media.file_name;
+    bubble.appendChild(fileNameEl);
+  }
 
   item.appendChild(meta);
   item.appendChild(bubble);
@@ -392,6 +441,13 @@ function connectWS() {
       return;
     }
 
+    if (data.type === "media") {
+      const type = data.from === state.role ? "self" : "peer";
+      const from = data.from === state.role ? "我" : "对方";
+      appendMediaMessage(type, data, from);
+      return;
+    }
+
     if (data.type === "system") {
       if (data.expires_at) {
         state.expiresAt = data.expires_at;
@@ -515,6 +571,69 @@ function sendMessage() {
   chatInput.value = "";
 }
 
+function openMediaPicker() {
+  if (!state.peerOnline) {
+    setSystemMessage("对方当前未在线");
+    return;
+  }
+  mediaInput.click();
+}
+
+function readFileAsDataURL(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(new Error("文件读取失败"));
+    reader.readAsDataURL(file);
+  });
+}
+
+async function sendMediaFile(file) {
+  if (!file) return;
+
+  if (!state.peerOnline) {
+    setSystemMessage("对方当前未在线");
+    return;
+  }
+  if (!ws || ws.readyState !== WebSocket.OPEN) {
+    setSystemMessage("当前未连接");
+    return;
+  }
+  if (file.size <= 0) {
+    setSystemMessage("文件为空");
+    return;
+  }
+  if (file.size > MEDIA_MAX_BYTES) {
+    setSystemMessage(`文件过大，最大支持 ${Math.floor(MEDIA_MAX_BYTES / 1024 / 1024)}MB`);
+    return;
+  }
+
+  const mediaKind = file.type.startsWith("image/") ? "image" : (file.type.startsWith("video/") ? "video" : "");
+  if (!mediaKind) {
+    setSystemMessage("仅支持图片或视频文件");
+    return;
+  }
+
+  try {
+    const dataURL = await readFileAsDataURL(file);
+    const payload = {
+      type: "media",
+      media_kind: mediaKind,
+      file_name: file.name || "",
+      mime_type: file.type,
+      size_bytes: file.size,
+      data_url: dataURL
+    };
+    ws.send(JSON.stringify(payload));
+    appendMediaMessage("self", payload, "我");
+    setSystemMessage("媒体发送成功");
+  } catch (err) {
+    setSystemMessage(err.message || "媒体发送失败");
+  } finally {
+    mediaInput.value = "";
+  }
+}
+
 async function tryRestoreRoom() {
   if (!state.roomId) {
     startCountdown();
@@ -560,6 +679,11 @@ refreshRoomListBtn.addEventListener("click", () => loadJoinableRooms());
 joinRoomBtn.addEventListener("click", () => joinSelectedRoom());
 destroyRoomBtn.addEventListener("click", destroyRoom);
 sendBtn.addEventListener("click", sendMessage);
+sendMediaBtn.addEventListener("click", openMediaPicker);
+mediaInput.addEventListener("change", () => {
+  const file = mediaInput.files && mediaInput.files[0];
+  sendMediaFile(file);
+});
 
 closeQrBtn.addEventListener("click", closeQrModal);
 copyQrLinkBtn.addEventListener("click", copyQrLink);
