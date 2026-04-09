@@ -14,3 +14,4 @@ room:
   wait_timeout_seconds: 300
   active_timeout_seconds: 600
   message_max_length: 1000
+  media_max_bytes: 8388608

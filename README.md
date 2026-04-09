@@ -1,9 +1,9 @@
-# Easy Text Transfer（文字互传）
+# Easy Text Transfer（文字 / 图片 / 视频互传）
 
-一个极简的双端文字互传项目：
+一个极简的双端互传项目：
 - 一端创建房间
 - 另一端加入房间
-- 双方通过 WebSocket 实时互发文本
+- 双方通过 WebSocket 实时互发文本、图片和视频
 - 房间有等待/激活超时机制
 
 ---
@@ -14,7 +14,12 @@
 - 创建房间、加入房间、销毁房间
 - 可加入房间列表（展示剩余秒数）
 - 房间状态查询（在线状态、剩余时间）
-- WebSocket 实时消息收发
+- WebSocket 实时消息收发（文本/图片/视频）
+- 支持粘贴图片发送（支持时也可粘贴视频）
+- 图片/视频消息可点击单独预览
+- 视频消息默认展示封面，点击后在预览层播放
+- 预览层支持上一条/下一条切换（移动端支持左右滑动）
+- 媒体加载完成后自动滚动到最新消息
 - 对方上下线提示
 - 房间二维码分享（前端）
 
@@ -89,6 +94,7 @@ room:
   wait_timeout_seconds: 300
   active_timeout_seconds: 600
   message_max_length: 1000
+  media_max_bytes: 8388608
 ```
 
 ### 生成口令哈希
@@ -127,6 +133,19 @@ echo -n "你的口令" | sha256sum
 
 ```json
 { "type": "chat", "content": "hello" }
+```
+
+客户端发送媒体：
+
+```json
+{
+  "type": "media",
+  "media_kind": "image",
+  "file_name": "demo.png",
+  "mime_type": "image/png",
+  "size_bytes": 12345,
+  "data_url": "data:image/png;base64,..."
+}
 ```
 
 服务端系统事件示例：

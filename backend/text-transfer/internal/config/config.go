@@ -28,6 +28,7 @@ type RoomConfig struct {
 	WaitTimeoutSeconds   int `yaml:"wait_timeout_seconds"`
 	ActiveTimeoutSeconds int `yaml:"active_timeout_seconds"`
 	MessageMaxLength     int `yaml:"message_max_length"`
+	MediaMaxBytes        int `yaml:"media_max_bytes"`
 }
 
 func Load(path string) (*Config, error) {
@@ -39,6 +40,10 @@ func Load(path string) (*Config, error) {
 	var cfg Config
 	if err := yaml.Unmarshal(data, &cfg); err != nil {
 		return nil, err
+	}
+
+	if cfg.Room.MediaMaxBytes <= 0 {
+		cfg.Room.MediaMaxBytes = 8 * 1024 * 1024
 	}
 
 	return &cfg, nil

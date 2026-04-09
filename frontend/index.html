@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>文字互传</title>
+  <title>文字/图片/视频互传</title>
   <link rel="stylesheet" href="./style.css" />
 </head>
 <body>
@@ -11,8 +11,8 @@
     <div class="app-card">
       <header class="app-header">
         <div>
-          <h1>文字互传</h1>
-          <p class="sub">极简双端文字互传</p>
+          <h1>文字/图片/视频互传</h1>
+          <p class="sub">极简双端文本与媒体互传</p>
         </div>
       </header>
 
@@ -70,7 +70,11 @@
 
           <div class="composer">
             <textarea id="chat-input" rows="2" placeholder="输入要发送的文字，按 Enter 发送，Shift+Enter 换行"></textarea>
-            <button id="send-btn">发送</button>
+            <div class="composer-actions">
+              <input id="media-input" type="file" accept="image/*,video/*" class="hidden" />
+              <button id="send-media-btn" class="secondary">发送图片/视频</button>
+              <button id="send-btn">发送文字</button>
+            </div>
           </div>
         </div>
       </section>
@@ -97,6 +101,17 @@
         <input id="qr-link-input" type="text" readonly />
         <button id="copy-qr-link-btn" class="secondary">复制链接</button>
       </div>
+    </div>
+  </div>
+
+  <div id="media-viewer-modal" class="modal hidden">
+    <div class="modal-mask"></div>
+    <div class="viewer-panel">
+      <button id="viewer-prev-btn" class="icon-btn viewer-nav-btn viewer-prev-btn" aria-label="上一条">‹</button>
+      <button id="viewer-next-btn" class="icon-btn viewer-nav-btn viewer-next-btn" aria-label="下一条">›</button>
+      <button id="close-media-viewer-btn" class="icon-btn viewer-close-btn" aria-label="关闭">×</button>
+      <img id="viewer-image" class="viewer-media hidden" alt="预览图片" />
+      <video id="viewer-video" class="viewer-media hidden" controls playsinline></video>
     </div>
   </div>
 

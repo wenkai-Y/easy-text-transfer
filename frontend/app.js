@@ -3,6 +3,7 @@ let ws = null;
 let reconnectTimer = null;
 let countdownTimer = null;
 let roomListTimer = null;
+const MEDIA_MAX_BYTES = 8 * 1024 * 1024;
 
 const state = {
   roomId: localStorage.getItem("tt_room_id") || "",
@@ -12,6 +13,11 @@ const state = {
   displayStatus: "未连接",
   peerOnline: false,
 };
+
+const mediaTimeline = [];
+let viewerMediaIndex = -1;
+let sendingMedia = false;
+let touchStartX = 0;
 
 const accessSection = document.getElementById("access-section");
 const mainSection = document.getElementById("main-section");
@@ -34,12 +40,21 @@ const destroyRoomBtn = document.getElementById("destroy-room-btn");
 const chatList = document.getElementById("chat-list");
 const chatInput = document.getElementById("chat-input");
 const sendBtn = document.getElementById("send-btn");
+const sendMediaBtn = document.getElementById("send-media-btn");
+const mediaInput = document.getElementById("media-input");
 
 const qrModal = document.getElementById("qr-modal");
 const closeQrBtn = document.getElementById("close-qr-btn");
 const qrCanvas = document.getElementById("qr-canvas");
 const qrLinkInput = document.getElementById("qr-link-input");
 const copyQrLinkBtn = document.getElementById("copy-qr-link-btn");
+
+const mediaViewerModal = document.getElementById("media-viewer-modal");
+const closeMediaViewerBtn = document.getElementById("close-media-viewer-btn");
+const viewerImage = document.getElementById("viewer-image");
+const viewerVideo = document.getElementById("viewer-video");
+const viewerPrevBtn = document.getElementById("viewer-prev-btn");
+const viewerNextBtn = document.getElementById("viewer-next-btn");
 
 function setSystemMessage(msg) {
   systemMsgEl.textContent = msg || "";
@@ -52,7 +67,29 @@ function setDisplayStatus(status) {
 
 function setPeerOnline(online) {
   state.peerOnline = !!online;
-  sendBtn.disabled = !state.peerOnline;
+  sendBtn.disabled = !state.peerOnline || sendingMedia;
+  sendMediaBtn.disabled = !state.peerOnline || sendingMedia;
+}
+
+function scrollChatToBottom() {
+  chatList.scrollTop = chatList.scrollHeight;
+  requestAnimationFrame(() => {
+    chatList.scrollTop = chatList.scrollHeight;
+  });
+}
+
+function setSendingMedia(loading) {
+  sendingMedia = !!loading;
+  sendMediaBtn.disabled = loading || !state.peerOnline;
+  sendBtn.disabled = loading || !state.peerOnline;
+  sendMediaBtn.textContent = loading ? "处理中..." : "发送图片/视频";
+}
+
+function showLargeFileAlert(maxBytes) {
+  const maxMB = Math.floor(maxBytes / 1024 / 1024);
+  const msg = `文件过大，最大支持 ${maxMB}MB`;
+  setSystemMessage(msg);
+  window.alert(msg);
 }
 
 function pad2(n) {
@@ -81,6 +118,10 @@ function clearRoomState() {
   state.peerOnline = false;
   saveState();
   setPeerOnline(false);
+  setSendingMedia(false);
+  mediaTimeline.length = 0;
+  viewerMediaIndex = -1;
+  closeMediaViewer();
   if (ws) {
     try { ws.close(); } catch (_) {}
     ws = null;
@@ -131,7 +172,130 @@ function appendMessage(type, text, from = "") {
   item.appendChild(meta);
   item.appendChild(bubble);
   chatList.appendChild(item);
-  chatList.scrollTop = chatList.scrollHeight;
+  scrollChatToBottom();
+}
+
+function renderViewerByIndex(index) {
+  const current = mediaTimeline[index];
+  if (!current) return;
+
+  viewerMediaIndex = index;
+
+  viewerImage.classList.add("hidden");
+  viewerVideo.classList.add("hidden");
+  viewerVideo.pause();
+  viewerVideo.removeAttribute("src");
+
+  if (current.mediaKind === "image") {
+    viewerImage.src = current.dataURL;
+    viewerImage.classList.remove("hidden");
+  } else if (current.mediaKind === "video") {
+    viewerVideo.src = current.dataURL;
+    viewerVideo.classList.remove("hidden");
+    setTimeout(() => {
+      viewerVideo.currentTime = 0;
+      viewerVideo.play().catch(() => {});
+    }, 0);
+  }
+
+  const hasPrev = index > 0;
+  const hasNext = index < mediaTimeline.length - 1;
+  viewerPrevBtn.disabled = !hasPrev;
+  viewerNextBtn.disabled = !hasNext;
+}
+
+function openMediaViewerById(mediaId) {
+  const idx = mediaTimeline.findIndex((item) => item.id === mediaId);
+  if (idx < 0) return;
+
+  renderViewerByIndex(idx);
+  mediaViewerModal.classList.remove("hidden");
+}
+
+function closeMediaViewer() {
+  mediaViewerModal.classList.add("hidden");
+  viewerImage.removeAttribute("src");
+  viewerVideo.pause();
+  viewerVideo.removeAttribute("src");
+}
+
+function showPrevMedia() {
+  if (viewerMediaIndex <= 0) return;
+  renderViewerByIndex(viewerMediaIndex - 1);
+}
+
+function showNextMedia() {
+  if (viewerMediaIndex >= mediaTimeline.length - 1) return;
+  renderViewerByIndex(viewerMediaIndex + 1);
+}
+
+function appendMediaMessage(type, media, from = "") {
+  const mediaId = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  mediaTimeline.push({
+    id: mediaId,
+    mediaKind: media.media_kind,
+    dataURL: media.data_url,
+    fileName: media.file_name || "",
+  });
+
+  const item = document.createElement("div");
+  item.className = `chat-item ${type}`;
+
+  const meta = document.createElement("div");
+  meta.className = "meta";
+
+  const now = new Date();
+  const timeStr = `${pad2(now.getHours())}:${pad2(now.getMinutes())}:${pad2(now.getSeconds())}`;
+  meta.textContent = from ? `${from} · ${timeStr}` : timeStr;
+
+  const bubble = document.createElement("div");
+  bubble.className = "bubble";
+
+  if (media.media_kind === "image") {
+    const img = document.createElement("img");
+    img.src = media.data_url;
+    img.alt = media.file_name || "image";
+    img.className = "bubble-media";
+    img.loading = "lazy";
+    img.addEventListener("load", scrollChatToBottom);
+    img.addEventListener("click", () => openMediaViewerById(mediaId));
+    bubble.appendChild(img);
+  } else if (media.media_kind === "video") {
+    const coverWrap = document.createElement("div");
+    coverWrap.className = "video-cover-wrap";
+
+    const video = document.createElement("video");
+    video.src = media.data_url;
+    video.controls = false;
+    video.preload = "metadata";
+    video.className = "bubble-media";
+    video.playsInline = true;
+    video.muted = true;
+    video.addEventListener("loadeddata", scrollChatToBottom);
+    coverWrap.addEventListener("click", () => openMediaViewerById(mediaId));
+
+    const playBadge = document.createElement("div");
+    playBadge.className = "video-play-badge";
+    playBadge.textContent = "▶";
+
+    coverWrap.appendChild(video);
+    coverWrap.appendChild(playBadge);
+    bubble.appendChild(coverWrap);
+  } else {
+    bubble.textContent = "收到不支持的媒体类型";
+  }
+
+  if (media.file_name) {
+    const fileNameEl = document.createElement("div");
+    fileNameEl.className = "bubble-file-name";
+    fileNameEl.textContent = media.file_name;
+    bubble.appendChild(fileNameEl);
+  }
+
+  item.appendChild(meta);
+  item.appendChild(bubble);
+  chatList.appendChild(item);
+  scrollChatToBottom();
 }
 
 async function request(url, options = {}) {
@@ -392,6 +556,13 @@ function connectWS() {
       return;
     }
 
+    if (data.type === "media") {
+      const type = data.from === state.role ? "self" : "peer";
+      const from = data.from === state.role ? "我" : "对方";
+      appendMediaMessage(type, data, from);
+      return;
+    }
+
     if (data.type === "system") {
       if (data.expires_at) {
         state.expiresAt = data.expires_at;
@@ -492,6 +663,11 @@ function connectWS() {
 }
 
 function sendMessage() {
+  if (sendingMedia) {
+    setSystemMessage("媒体处理中，请稍候");
+    return;
+  }
+
   const text = chatInput.value.trim();
   if (!text) {
     setSystemMessage("请输入消息");
@@ -513,6 +689,94 @@ function sendMessage() {
 
   appendMessage("self", text, "我");
   chatInput.value = "";
+}
+
+function openMediaPicker() {
+  if (!state.peerOnline) {
+    setSystemMessage("对方当前未在线");
+    return;
+  }
+  mediaInput.click();
+}
+
+function readFileAsDataURL(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(new Error("文件读取失败"));
+    reader.readAsDataURL(file);
+  });
+}
+
+async function sendMediaFile(file) {
+  if (!file) return;
+
+  if (!state.peerOnline) {
+    setSystemMessage("对方当前未在线");
+    return;
+  }
+  if (!ws || ws.readyState !== WebSocket.OPEN) {
+    setSystemMessage("当前未连接");
+    return;
+  }
+  if (file.size <= 0) {
+    setSystemMessage("文件为空");
+    return;
+  }
+  if (file.size > MEDIA_MAX_BYTES) {
+    showLargeFileAlert(MEDIA_MAX_BYTES);
+    return;
+  }
+
+  const mediaKind = file.type.startsWith("image/") ? "image" : (file.type.startsWith("video/") ? "video" : "");
+  if (!mediaKind) {
+    setSystemMessage("仅支持图片或视频文件");
+    return;
+  }
+
+  try {
+    setSendingMedia(true);
+    const dataURL = await readFileAsDataURL(file);
+    const payload = {
+      type: "media",
+      media_kind: mediaKind,
+      file_name: file.name || "",
+      mime_type: file.type,
+      size_bytes: file.size,
+      data_url: dataURL
+    };
+    ws.send(JSON.stringify(payload));
+    appendMediaMessage("self", payload, "我");
+    setSystemMessage("媒体发送成功");
+  } catch (err) {
+    setSystemMessage(err.message || "媒体发送失败");
+  } finally {
+    setSendingMedia(false);
+    mediaInput.value = "";
+  }
+}
+
+function extractMediaFileFromClipboard(event) {
+  const clipboardData = event.clipboardData;
+  if (!clipboardData || !clipboardData.items) return null;
+
+  for (const item of clipboardData.items) {
+    if (item.kind !== "file") continue;
+    if (!item.type.startsWith("image/") && !item.type.startsWith("video/")) {
+      continue;
+    }
+    const file = item.getAsFile();
+    if (file) return file;
+  }
+  return null;
+}
+
+function handlePasteMedia(event) {
+  const file = extractMediaFileFromClipboard(event);
+  if (!file) return;
+
+  event.preventDefault();
+  sendMediaFile(file);
 }
 
 async function tryRestoreRoom() {
@@ -560,6 +824,11 @@ refreshRoomListBtn.addEventListener("click", () => loadJoinableRooms());
 joinRoomBtn.addEventListener("click", () => joinSelectedRoom());
 destroyRoomBtn.addEventListener("click", destroyRoom);
 sendBtn.addEventListener("click", sendMessage);
+sendMediaBtn.addEventListener("click", openMediaPicker);
+mediaInput.addEventListener("change", () => {
+  const file = mediaInput.files && mediaInput.files[0];
+  sendMediaFile(file);
+});
 
 closeQrBtn.addEventListener("click", closeQrModal);
 copyQrLinkBtn.addEventListener("click", copyQrLink);
@@ -568,6 +837,29 @@ qrModal.addEventListener("click", (e) => {
     closeQrModal();
   }
 });
+
+closeMediaViewerBtn.addEventListener("click", closeMediaViewer);
+viewerPrevBtn.addEventListener("click", showPrevMedia);
+viewerNextBtn.addEventListener("click", showNextMedia);
+mediaViewerModal.addEventListener("click", (e) => {
+  if (e.target.classList.contains("modal-mask")) {
+    closeMediaViewer();
+  }
+});
+mediaViewerModal.addEventListener("touchstart", (e) => {
+  if (!e.touches || e.touches.length === 0) return;
+  touchStartX = e.touches[0].clientX;
+}, { passive: true });
+mediaViewerModal.addEventListener("touchend", (e) => {
+  if (!e.changedTouches || e.changedTouches.length === 0) return;
+  const deltaX = e.changedTouches[0].clientX - touchStartX;
+  if (Math.abs(deltaX) < 40) return;
+  if (deltaX > 0) {
+    showPrevMedia();
+  } else {
+    showNextMedia();
+  }
+}, { passive: true });
 
 passwordInput.addEventListener("keydown", (e) => {
   if (e.key === "Enter") access();
@@ -581,6 +873,23 @@ chatInput.addEventListener("keydown", (e) => {
   if (e.key === "Enter" && !e.shiftKey) {
     e.preventDefault();
     sendMessage();
+  }
+});
+
+chatInput.addEventListener("paste", handlePasteMedia);
+document.addEventListener("paste", (e) => {
+  if (document.activeElement === chatInput) return;
+  if (!state.roomId || !state.role) return;
+  handlePasteMedia(e);
+});
+
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && !mediaViewerModal.classList.contains("hidden")) {
+    closeMediaViewer();
+  } else if (e.key === "ArrowLeft" && !mediaViewerModal.classList.contains("hidden")) {
+    showPrevMedia();
+  } else if (e.key === "ArrowRight" && !mediaViewerModal.classList.contains("hidden")) {
+    showNextMedia();
   }
 });
 
