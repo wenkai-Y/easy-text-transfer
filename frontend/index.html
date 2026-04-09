@@ -104,6 +104,17 @@
     </div>
   </div>
 
+  <div id="media-viewer-modal" class="modal hidden">
+    <div class="modal-mask"></div>
+    <div class="viewer-panel">
+      <button id="viewer-prev-btn" class="icon-btn viewer-nav-btn viewer-prev-btn" aria-label="上一条">‹</button>
+      <button id="viewer-next-btn" class="icon-btn viewer-nav-btn viewer-next-btn" aria-label="下一条">›</button>
+      <button id="close-media-viewer-btn" class="icon-btn viewer-close-btn" aria-label="关闭">×</button>
+      <img id="viewer-image" class="viewer-media hidden" alt="预览图片" />
+      <video id="viewer-video" class="viewer-media hidden" controls playsinline></video>
+    </div>
+  </div>
+
   <script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js"></script>
   <script src="./app.js"></script>
 </body>
