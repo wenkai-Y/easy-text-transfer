@@ -298,6 +298,51 @@ function appendMediaMessage(type, media, from = "") {
   scrollChatToBottom();
 }
 
+function appendMediaMessage(type, media, from = "") {
+  const item = document.createElement("div");
+  item.className = `chat-item ${type}`;
+
+  const meta = document.createElement("div");
+  meta.className = "meta";
+
+  const now = new Date();
+  const timeStr = `${pad2(now.getHours())}:${pad2(now.getMinutes())}:${pad2(now.getSeconds())}`;
+  meta.textContent = from ? `${from} · ${timeStr}` : timeStr;
+
+  const bubble = document.createElement("div");
+  bubble.className = "bubble";
+
+  if (media.media_kind === "image") {
+    const img = document.createElement("img");
+    img.src = media.data_url;
+    img.alt = media.file_name || "image";
+    img.className = "bubble-media";
+    img.loading = "lazy";
+    bubble.appendChild(img);
+  } else if (media.media_kind === "video") {
+    const video = document.createElement("video");
+    video.src = media.data_url;
+    video.controls = true;
+    video.preload = "metadata";
+    video.className = "bubble-media";
+    bubble.appendChild(video);
+  } else {
+    bubble.textContent = "收到不支持的媒体类型";
+  }
+
+  if (media.file_name) {
+    const fileNameEl = document.createElement("div");
+    fileNameEl.className = "bubble-file-name";
+    fileNameEl.textContent = media.file_name;
+    bubble.appendChild(fileNameEl);
+  }
+
+  item.appendChild(meta);
+  item.appendChild(bubble);
+  chatList.appendChild(item);
+  chatList.scrollTop = chatList.scrollHeight;
+}
+
 async function request(url, options = {}) {
   const res = await fetch(API_BASE + url, {
     credentials: "include",
